@@ -6,6 +6,30 @@ f = file('pickledProstates', 'rb')
 
 covariates, targets = cPickle.load(f)
 
+
+mins = numpy.ndarray((131,),float);
+mins.fill(99999)
+maxes = numpy.ndarray((131,),float);
+maxes.fill(-99999)
+
+for i in xrange(0,covariates.shape[0]):
+	for j in xrange(0, 131):
+		mins[j] = min(mins[j], covariates[i][j])
+		maxes[j] = max(maxes[j], covariates[i][j])
+
+for i in xrange(0,covariates.shape[0]):
+	for j in xrange(0,131):
+		if(mins[j] == maxes[j]):
+			if(covariates[i][j] != 0):
+				covariates[i][j] = covariates[i][j] / covariates[i][j]
+		else:
+			covariates[i][j] = (covariates[i][j] - mins[j]) / (abs(maxes[j] - mins[j]))
+
+
+
+
+
+
 f.close()
 
 

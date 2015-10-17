@@ -45,6 +45,8 @@ from logistic_sgd import LogisticRegression, load_data
 from mlp import HiddenLayer
 from dA import dA
 
+import lasagne;
+
 
 # start-snippet-1
 class SdA(object):
@@ -63,7 +65,7 @@ class SdA(object):
         numpy_rng,
         theano_rng=None,
         n_ins=784,
-        hidden_layers_sizes=[500, 500],
+        hidden_layers_sizes=[66, 33, 17],
         n_outs=10,
         corruption_levels=[0.1, 0.1]
     ):
@@ -102,9 +104,9 @@ class SdA(object):
         if not theano_rng:
             theano_rng = RandomStreams(numpy_rng.randint(2 ** 30))
         # allocate symbolic variables for the data
-        self.x = T.matrix('x')  # the data is presented as rasterized images
+        self.x = T.matrix('x')  # medical data
         self.y = T.ivector('y')  # the labels are presented as 1D vector of
-                                 # [int] labels
+
         # end-snippet-1
 
         # The SdA is an MLP, for which all weights of intermediate layers
@@ -162,22 +164,29 @@ class SdA(object):
             self.dA_layers.append(dA_layer)
         # end-snippet-2
         # We now need to add a logistic layer on top of the MLP
-        self.logLayer = LogisticRegression(
-            input=self.sigmoid_layers[-1].output,
-            n_in=hidden_layers_sizes[-1],
-            n_out=n_outs
-        )
+        #self.logLayer = LogisticRegression(
+           # input=self.sigmoid_layers[-1].output,
+            #n_in=hidden_layers_sizes[-1],
 
-        self.params.extend(self.logLayer.params)
+         #   n_out=n_outs
+        #)
+
+        self.outputLayer = HiddenLayer(numpy_rng,self.sigmoid_layers[-1].output,hidden_layers_sizes[-1],1,activation=T.nnet.sigmoid)
+
+
+
+        self.params.extend(self.outputLayer.params)
         # construct a function that implements one step of finetunining
 
         # compute the cost for second phase of training,
         # defined as the negative log likelihood
-        self.finetune_cost = self.logLayer.negative_log_likelihood(self.y)
+        self.finetune_cost = T.nnet.binary_crossentropy(self.outputLayer.output, self.y)
+        self.finetune_cost = self.finetune_cost.mean()
         # compute the gradients with respect to the model parameters
         # symbolic variable that points to the number of errors made on the
         # minibatch given by self.x and self.y
-        self.errors = self.logLayer.errors(self.y)
+        self.y_pred = T.round(self.outputLayer.output)
+        self.errors = T.mean(T.neq(self.y_pred, self.y))
 
     def pretraining_functions(self, train_set_x, batch_size):
         ''' Generates a list of functions, each of them implementing one
@@ -327,7 +336,7 @@ class SdA(object):
 
 def test_SdA(finetune_lr=0.1, pretraining_epochs=15,
              pretrain_lr=0.001, training_epochs=1000,
-             dataset='mnist.pkl.gz', batch_size=1):
+             dataset='mnist.pkl.gz', batch_size=100):
     """
     Demonstrates how to train and test a stochastic denoising autoencoder.
 
@@ -372,7 +381,7 @@ def test_SdA(finetune_lr=0.1, pretraining_epochs=15,
     sda = SdA(
         numpy_rng=numpy_rng,
         n_ins=131,
-        hidden_layers_sizes=[167, 167, 167],
+        hidden_layers_sizes=[100,75, 57, 42, 21],
         n_outs=2
     )
     # end-snippet-3 start-snippet-4
@@ -386,7 +395,7 @@ def test_SdA(finetune_lr=0.1, pretraining_epochs=15,
     print '... pre-training the model'
     start_time = timeit.default_timer()
     ## Pre-train layer-wise
-    corruption_levels = [.1, .2, .3]
+    corruption_levels = [.2, .0, .0,.0, .0]
     for i in xrange(sda.n_layers):
         # go through pretraining epochs
         for epoch in xrange(pretraining_epochs):
@@ -419,7 +428,7 @@ def test_SdA(finetune_lr=0.1, pretraining_epochs=15,
 
     print '... finetunning the model'
     # early-stopping parameters
-    patience = 10 * n_train_batches  # look as this many examples regardless
+    patience = 100 * n_train_batches  # look as this many examples regardless
     patience_increase = 2.  # wait this much longer when a new best is
                             # found
     improvement_threshold = 0.995  # a relative improvement of this much is
@@ -493,4 +502,4 @@ def test_SdA(finetune_lr=0.1, pretraining_epochs=15,
 
 
 if __name__ == '__main__':
-    test_SdA(dataset='../../pickledProstatesDivided.pkl.gz',finetune_lr=0.5)
+    test_SdA(dataset='../../pickledProstatesDivided.pkl.gz',pretraining_epochs=100,finetune_lr=0.05,batch_size=1,training_epochs=2000)
