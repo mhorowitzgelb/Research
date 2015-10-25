@@ -32,6 +32,11 @@ for i in xrange(0,covariates.shape[0]):
 
 f.close()
 
+ndf = file('pickledProstatesNormalized.pkl','wb')
+
+cPickle.dump((covariates,targets),ndf,protocol=cPickle.HIGHEST_PROTOCOL)
+
+ndf.close()
 
 
 
