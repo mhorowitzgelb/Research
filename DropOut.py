@@ -213,11 +213,11 @@ def build_cnn(input_var=None):
 # several changes in the main program, though, and is not demonstrated here.
 
 def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
-    assert len(inputs) == len(targets)
+    #assert len(inputs) == len(targets)
     if shuffle:
         indices = np.arange(len(inputs))
         np.random.shuffle(indices)
-    for start_idx in range(0, len(inputs) - batchsize + 1, batchsize):
+    for start_idx in range(0, 1600 - batchsize + 1, batchsize):
         if shuffle:
             excerpt = indices[start_idx:start_idx + batchsize]
         else:
@@ -230,143 +230,209 @@ def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
 # more functions to better separate the code, but it wouldn't make it any
 # easier to read.
 
-def main(model='mlp', num_epochs=500):
-
-    X_train, y_train, X_val, y_val, X_test, y_test = load_dataset()
-
-    print(X_train.shape)
-
-    with gzip.open('pickledProstatesDivided.pkl.gz','rb') as f:
-        data = cPickle.load(f);
-
-    X_train = data[0][0].astype(np.float32)
-    X_val = data[1][0].astype(np.float32)
-    X_test = data[2][0].astype(np.float32)
-
-    y_train = data[0][1].astype(np.float32)
-    y_val = data[1][1].astype(np.float32)
-    y_test = data[2][1].astype(np.float32)
-
-    print(X_train.shape)
-
-    input_var = T.matrix('inputs')
-    target_var = T.fvector('targets')
-
-    batchsize = 80
-
-    l_in = lasagne.layers.InputLayer(shape=(batchsize, 131),
-                                     input_var=input_var)
-
-    # Apply 20% dropout to the input data:
-    l_in_drop = lasagne.layers.DropoutLayer(l_in, p=0.1)
-
-    # Add a fully-connected layer of 800 units, using the linear rectifier, and
-    # initializing weights with Glorot's scheme (which is the default anyway):
-    l_hid1 = lasagne.layers.DenseLayer(
-            l_in_drop, num_units=66,
-            nonlinearity=lasagne.nonlinearities.rectify,
-            W=lasagne.init.GlorotUniform())
-
-    # We'll now add dropout of 50%:
-    l_hid1_drop = lasagne.layers.DropoutLayer(l_hid1, p=0.1)
-
-    # Another 800-unit layer:
-    l_hid2 = lasagne.layers.DenseLayer(
-            l_hid1_drop, num_units=33,
-            nonlinearity=lasagne.nonlinearities.rectify)
-
-    # 50% dropout again:
-    l_hid2_drop = lasagne.layers.DropoutLayer(l_hid2, p=0.1)
-
-    l_hid3 = lasagne.layers.DenseLayer(l_hid2_drop,17,nonlinearity=lasagne.nonlinearities.rectify)
-
-    l_hid3_drop = lasagne.layers.DropoutLayer(l_hid3, p=0.1)
-
-    # Finally, we'll add the fully-connected output layer, of 10 softmax units:
-    network = lasagne.layers.DenseLayer(
-            l_hid3_drop, num_units=1,
-            nonlinearity=lasagne.nonlinearities.rectify)
+def main(model='mlp', num_epochs=1000):
 
 
 
-    # Create a loss expression for training, i.e., a scalar objective we want
-    # to minimize (for our multi-class problem, it is the cross-entropy loss):
-    prediction = lasagne.layers.get_output(network)
-    loss = lasagne.objectives.binary_crossentropy(prediction, target_var)
-    loss = loss.mean()
-    # We could add some weight decay as well here, see lasagne.regularization.
+    f = file('pickledProstatesNormalized.pkl','rb')
 
-    # Create update expressions for training, i.e., how to modify the
-    # parameters at each training step. Here, we'll use Stochastic Gradient
-    # Descent (SGD) with Nesterov momentum, but Lasagne offers plenty more.
-    params = lasagne.layers.get_all_params(network, trainable=True)
-    updates = lasagne.updates.nesterov_momentum(
-            loss, params, learning_rate=0.01, momentum=0.9)
+    dataX, dataY = cPickle.load(f)
 
-    # Create a loss expression for validation/testing. The crucial difference
-    # here is that we do a deterministic forward pass through the network,
-    # disabling dropout layers.
-    test_prediction = lasagne.layers.get_output(network, deterministic=True)
-    test_loss = lasagne.objectives.binary_crossentropy(test_prediction,
-                                                            target_var)
-    test_loss = test_loss.mean()
-    # As a bonus, also create an expression for the classification accuracy:
-    test_acc = T.mean(T.eq(T.round(test_prediction), target_var),
-                      dtype=theano.config.floatX)
+    folds = 10
+    foldsize = 160
 
-    # Compile a function performing a training step on a mini-batch (by giving
-    # the updates dictionary) and returning the corresponding training loss:
-    train_fn = theano.function([input_var, target_var], loss, updates=updates)
 
-    # Compile a second function computing the validation loss and accuracy:
-    val_fn = theano.function([input_var, target_var], [test_loss, test_acc])
+    rocf = file('rocFormattedDropout', 'wb')
 
-    # Finally, launch the training loop.
-    print("Starting training...")
-    # We iterate over epochs:
-    for epoch in range(num_epochs):
-        # In each epoch, we do a full pass over the training data:
-        train_err = 0
-        train_batches = 0
-        start_time = time.time()
-        for batch in iterate_minibatches(X_train, y_train, batchsize, shuffle=False):
-            inputs, targets = batch
-            train_err += train_fn(inputs, targets)
-            train_batches += 1
+    rocf.write('class\tprediction\n')
 
-        # And a full pass over the validation data:
-        val_err = 0
-        val_acc = 0
-        val_batches = 0
-        for batch in iterate_minibatches(X_val, y_val, batchsize, shuffle=False):
-            inputs, targets = batch
-            err, acc = val_fn(inputs, targets)
-            val_err += err
-            val_acc += acc
-            val_batches += 1
+    for fold in xrange(0, folds):
 
-        # Then we print the results for this epoch:
-        print("Epoch {} of {} took {:.3f}s".format(
-            epoch + 1, num_epochs, time.time() - start_time))
-        print("  training loss:\t\t{:.6f}".format(train_err / train_batches))
-        print("  validation loss:\t\t{:.6f}".format(val_err / val_batches))
-        print("  validation accuracy:\t\t{:.2f} %".format(
-            val_acc / val_batches * 100))
+        print("fold %i" %(fold))
 
-    # After training, we compute and print the test error:
-    test_err = 0
-    test_acc = 0
-    test_batches = 0
-    for batch in iterate_minibatches(X_test, y_test, batchsize, shuffle=False):
-        inputs, targets = batch
-        err, acc = val_fn(inputs, targets)
-        test_err += err
-        test_acc += acc
-        test_batches += 1
-    print("Final results:")
-    print("  test loss:\t\t\t{:.6f}".format(test_err / test_batches))
-    print("  test accuracy:\t\t{:.2f} %".format(
-        test_acc / test_batches * 100))
+        X_train = theano.shared(np.asarray(np.concatenate((dataX[0: fold * foldsize], dataX[(fold+1) * foldsize: 1600])),
+                                               dtype=theano.config.floatX),
+                                 borrow=True)
+        y_train = theano.shared(np.asarray(np.concatenate((dataY[0: fold * foldsize], dataY[(fold+1) * foldsize: 1600])),
+                                               dtype=theano.config.floatX),
+                                 borrow=True)
+
+        X_test = theano.shared(np.asarray(dataX[fold * foldsize: (fold+1) * foldsize],
+                                               dtype=theano.config.floatX),
+                                 borrow=True)
+
+        y_test = theano.shared(np.asarray(dataY[fold * foldsize: (fold+1) * foldsize],
+                                               dtype=theano.config.floatX),
+                                 borrow=True)
+
+        X_val = X_test
+        y_val = y_test
+
+        '''
+        X_train = data[0][0].astype(np.float32)
+        X_val = data[1][0].astype(np.float32)
+        X_test = data[2][0].astype(np.float32)
+
+        y_train = data[0][1].astype(np.float32)
+        y_val = data[1][1].astype(np.float32)
+        y_test = data[2][1].astype(np.float32)
+        '''
+
+
+
+
+
+
+
+        input_var = T.matrix('inputs')
+        target_var = T.fvector('targets')
+
+        batchsize = 80
+
+        l_in = lasagne.layers.InputLayer(shape=(None, 131),
+                                         input_var=input_var)
+
+        # Apply 20% dropout to the input data:
+        l_in_drop = lasagne.layers.DropoutLayer(l_in, p=0.1)
+
+        # Add a fully-connected layer of 800 units, using the linear rectifier, and
+        # initializing weights with Glorot's scheme (which is the default anyway):
+        l_hid1 = lasagne.layers.DenseLayer(
+                l_in_drop, num_units=66,
+                nonlinearity=lasagne.nonlinearities.sigmoid,
+                W=lasagne.init.GlorotUniform())
+
+        # We'll now add dropout of 50%:
+        l_hid1_drop = lasagne.layers.DropoutLayer(l_hid1, p=0.1)
+
+        # Another 800-unit layer:
+        l_hid2 = lasagne.layers.DenseLayer(
+                l_hid1_drop, num_units=33,
+                nonlinearity=lasagne.nonlinearities.sigmoid)
+
+        # 50% dropout again:
+        l_hid2_drop = lasagne.layers.DropoutLayer(l_hid2, p=0.1)
+
+        l_hid3 = lasagne.layers.DenseLayer(l_hid2_drop,17,nonlinearity=lasagne.nonlinearities.sigmoid)
+
+        l_hid3_drop = lasagne.layers.DropoutLayer(l_hid3, p=0.1)
+
+        # Finally, we'll add the fully-connected output layer, of 10 softmax units:
+        network = lasagne.layers.DenseLayer(
+                l_hid3_drop, num_units=1,
+                nonlinearity=lasagne.nonlinearities.sigmoid)
+
+
+
+        # Create a loss expression for training, i.e., a scalar objective we want
+        # to minimize (for our multi-class problem, it is the cross-entropy loss):
+        prediction = lasagne.layers.get_output(network).flatten()
+        loss = lasagne.objectives.binary_crossentropy(prediction, target_var)
+        loss = loss.mean()
+        # We could add some weight decay as well here, see lasagne.regularization.
+
+        # Create update expressions for training, i.e., how to modify the
+        # parameters at each training step. Here, we'll use Stochastic Gradient
+        # Descent (SGD) with Nesterov momentum, but Lasagne offers plenty more.
+        params = lasagne.layers.get_all_params(network, trainable=True)
+        updates = lasagne.updates.nesterov_momentum(
+                loss, params, learning_rate=0.01, momentum=0.9)
+
+        # Create a loss expression for validation/testing. The crucial difference
+        # here is that we do a deterministic forward pass through the network,
+        # disabling dropout layers.
+        test_prediction = lasagne.layers.get_output(network, deterministic=True).flatten()
+        test_loss = lasagne.objectives.binary_crossentropy(test_prediction,
+                                                                target_var)
+        test_loss = test_loss.mean()
+        # As a bonus, also create an expression for the classification accuracy:
+        test_acc = T.mean(T.eq(T.round(test_prediction), target_var),
+                          dtype=theano.config.floatX)
+
+        rocfn = theano.function(inputs=[],outputs=[prediction, target_var],givens={input_var: X_test, target_var: y_test})
+
+
+        index = theano.tensor.lscalar('index')
+
+        # Compile a function performing a training step on a mini-batch (by giving
+        # the updates dictionary) and returning the corresponding training loss:
+        train_fn = theano.function([index], updates=updates,
+                                   givens={
+                                    input_var: X_train[
+                                         index * batchsize: (index + 1) * batchsize
+                                    ],
+                                    target_var: y_train[
+                                        index * batchsize: (index + 1) * batchsize
+                                    ]
+                                     })
+
+        # Compile a second function computing the validation loss and accuracy:
+        val_fn = theano.function([index], [test_loss, test_acc], givens={
+                                    input_var: X_test[
+                                         index * batchsize: (index + 1) * batchsize
+                                    ],
+                                    target_var: y_test[
+                                        index * batchsize: (index + 1) * batchsize
+                                    ]
+                                     })
+
+        prediction_fn = theano.function([input_var], prediction.flatten())
+        loss_fn = theano.function([input_var, target_var], lasagne.objectives.binary_crossentropy(prediction,target_var))
+
+        # Finally, launch the training loop.
+        print("Starting training...")
+        # We iterate over epochs:
+        for epoch in range(num_epochs):
+            # In each epoch, we do a full pass over the training data:
+            train_err = 0
+            train_batches = 0
+            start_time = time.time()
+            for batch in xrange(0, 18):
+
+                '''
+                print("inputs")
+                print(inputs)
+                print('targets')
+                print(targets)
+                print('predictions')
+                print(prediction_fn(inputs))
+                print('losses')
+                print(loss_fn(inputs, targets))
+                print('sdfsd' +1)
+                '''
+                train_fn(batch)
+                train_batches += 1
+
+        finaloutputs = rocfn()
+
+
+        targets = y_test.get_value()
+        for i in xrange(0,160):
+            target = targets[i]
+            prediction = finaloutputs[0][i]
+            if target > 0.5:
+                classtring = '+1'
+            else:
+                classtring = '-1'
+
+            rocf.write(classtring + '\t%f\n'%(prediction))
+
+        # After training, we compute and print the test error:
+        test_err = 0
+        test_acc = 0
+        test_batches = 0
+        for batch in xrange(0,2):
+
+            err, acc = val_fn(batch)
+            test_err += err
+            test_acc += acc
+            test_batches += 1
+        print("Final results:")
+        print("  test loss:\t\t\t{:.6f}".format(test_err / test_batches))
+        print("  test accuracy:\t\t{:.2f} %".format(
+            test_acc / test_batches * 100))
+
+    rocf.close()
 
     # Optionally, you could now dump the network weights to a file like this:
     # np.savez('model.npz', *lasagne.layers.get_all_param_values(network))
