@@ -13,7 +13,6 @@ import theano.tensor as T
 import lasagne
 import gzip
 import cPickle
-from random import shuffle
 
 def main(model='mlp', num_epochs=1000):
 
@@ -22,17 +21,10 @@ def main(model='mlp', num_epochs=1000):
     f = file('pickledProstatesNormalized.pkl','rb')
 
     dataX, dataY = cPickle.load(f)
-    dataX = np.delete(dataX, [0,1,2,3,4,5],1)
+
     folds = 10
     foldsize = 160
-    data = zip(dataX,dataY)
-    shuffle(data)
-    data = zip(*data)
-    dataX = np.array(list(data[0]),dtype=float)
-    dataY = np.array(list(data[1]),dtype=float)
-    
-    print(dataX.shape)	
-    print(dataY.shape)    
+
 
     rocf = file('rocFormattedDropout', 'wb')
 
@@ -81,7 +73,7 @@ def main(model='mlp', num_epochs=1000):
 
         batchsize = 80
 
-        l_in = lasagne.layers.InputLayer(shape=(None, 125),
+        l_in = lasagne.layers.InputLayer(shape=(None, 131),
                                          input_var=input_var)
 
         # Apply 20% dropout to the input data:

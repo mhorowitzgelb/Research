@@ -3,8 +3,9 @@ import cPickle
 import random
 
 f = file('pickledProstates', 'rb')
-
+lf = file('ProstateDataLeader.pkl', 'rb');
 covariates, targets = cPickle.load(f)
+l_covariates = cPickle.load(lf);
 
 
 mins = numpy.ndarray((131,),float);
@@ -17,6 +18,13 @@ for i in xrange(0,covariates.shape[0]):
 		mins[j] = min(mins[j], covariates[i][j])
 		maxes[j] = max(maxes[j], covariates[i][j])
 
+for i in xrange(0,l_covariates.shape[0]):
+	for j in xrange(0,131):
+		mins[j] = min(mins[j], l_covariates[i][j])
+		maxes[j] = max(maxes[j], l_covariates[i][j])
+
+
+
 for i in xrange(0,covariates.shape[0]):
 	for j in xrange(0,131):
 		if(mins[j] == maxes[j]):
@@ -26,52 +34,26 @@ for i in xrange(0,covariates.shape[0]):
 			covariates[i][j] = (covariates[i][j] - mins[j]) / (abs(maxes[j] - mins[j]))
 
 
+for i in xrange(0,l_covariates.shape[0]):
+	for j in xrange(0,131):
+		if(mins[j] == maxes[j]):
+			if l_covariates[i][j] != 0:
+				l_covariates[i][j] = l_covariates[i][j] / l_covariates[i][j]
+		else:
+			l_covariates[i][j] = (l_covariates[i][j] - mins[j]) / (abs(maxes[j] - mins[j]))		
 
 
 
 
 f.close()
+lf.close()
 
 ndf = file('pickledProstatesNormalized.pkl','wb')
-
+nldf = file('leaderProstateDataNormalized.pkl','wb')
 cPickle.dump((covariates,targets),ndf,protocol=cPickle.HIGHEST_PROTOCOL)
-
+cPickle.dump(l_covariates, nldf, protocol=cPickle.HIGHEST_PROTOCOL)
 ndf.close()
-
-
-
-covariates_validation = numpy.ndarray((160,131))
-targets_validation = numpy.ndarray((160,))
-
-covariates_testing = numpy.ndarray((160,131))
-targets_testing = numpy.ndarray((160,))
-
-for i in xrange(0,160):
-	index = random.randint(0, covariates.shape[0]-1)
-	covariates_validation[i] = covariates[index]
-	targets_validation[i] = targets[index]
-	covariates = numpy.delete(covariates, index, axis=0)
-	targets = numpy.delete(targets, index, axis=0)
-	
-
-	index = random.randint(0, covariates.shape[0]-1)
-	covariates_testing[i] = covariates[index]
-	targets_testing[i] = targets[index]
-	covariates = numpy.delete(covariates, index, axis=0)
-	targets = numpy.delete(targets, index, axis=0) 
-
-covariates_training = covariates
-targets_training = targets
-
-dataset = [(covariates_training,targets_training), (covariates_validation,targets_validation), (covariates_testing,targets_testing)]
-
-
-f = file('pickledProstatesDivided', 'wb')
-
-cPickle.dump(dataset,f, protocol=cPickle.HIGHEST_PROTOCOL)
-f.close()
-
-
+nldf.close()
 
 
 
